@@ -489,6 +489,35 @@
   .share-box .btn{min-height:42px;padding:10px 20px}
   a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 
+  /* ---------- 安装说明 ---------- */
+  .install-box{
+    background:linear-gradient(180deg,#15152b,#0d0d1c);
+    border:1px solid rgba(227,192,127,.3);border-radius:18px;
+    padding:20px 18px 16px;text-align:left;width:100%;max-width:430px;
+  }
+  .install-box h3{
+    margin:0 0 12px;font-family:var(--serif);font-size:19px;letter-spacing:.1em;
+    color:#f6e0ae;text-align:center;
+  }
+  .inst-body{font-size:13.5px;line-height:1.95;color:#d6cfc0}
+  .inst-body p{margin:0 0 8px}
+  .inst-body ol{margin:6px 0 10px;padding-left:20px}
+  .inst-body li{margin:5px 0}
+  .inst-body b{color:#f6e0ae;font-weight:600}
+  .inst-body kbd{
+    background:rgba(227,192,127,.15);border:1px solid rgba(227,192,127,.3);
+    border-radius:5px;padding:0 6px;font-size:12.5px;font-family:inherit;color:#f4e6c2;
+  }
+  .inst-diag{
+    margin-top:14px;padding-top:12px;border-top:1px dashed rgba(255,255,255,.14);
+    font-size:12px;color:#9a94b6;
+  }
+  .inst-diag div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}
+  .inst-diag span:last-child{text-align:right}
+  .inst-diag .ok{color:#7fd8ab}
+  .inst-diag .no{color:#f0b3af}
+  .inst-diag .ttl{color:#8b87a8;letter-spacing:.14em;font-size:10.5px;margin-bottom:4px;display:block}
+
   @media (max-width:560px){
     .view-head h2{font-size:23px}
     .card{padding:15px;border-radius:17px}
@@ -553,7 +582,7 @@
     </div>
     <div class="row-actions">
       <button class="btn" id="todayShare" type="button">生成分享图</button>
-      <button class="btn ghost" id="installBtn" type="button" style="display:none">安装到桌面</button>
+      <button class="btn ghost" id="installBtn" type="button">安装到桌面</button>
     </div>
     <p class="note">每天零点换成新的一签一牌，同一天看到的一样。</p>
 
@@ -689,6 +718,16 @@
   </section>
 
   <footer>占卜屋 · 传统术数为框架的现代演绎<br />结果仅供娱乐，事在人为</footer>
+</div>
+
+<div class="share-mask" id="installMask">
+  <div class="install-box">
+    <h3 id="instTitle">安装到桌面</h3>
+    <div class="inst-body" id="instBody"></div>
+    <div class="row-actions" style="margin-top:14px">
+      <button class="btn ghost" id="instClose" type="button">知道了</button>
+    </div>
+  </div>
 </div>
 
 <div class="share-mask" id="shareMask">
@@ -2040,7 +2079,7 @@
     if (e.target === $('#shareMask')) closeShare();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeShare();
+    if (e.key === 'Escape') { closeShare(); closeInstallSheet(); }
   });
 
   /* ================= 今日：每日一签 + 每日一牌 ================= */
@@ -2486,23 +2525,123 @@
     });
   }
   var installPrompt = null;
+  var UA = navigator.userAgent || '';
+  var ENV = {
+    ios: /iPad|iPhone|iPod/.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
+    android: /Android/.test(UA),
+    wechat: /MicroMessenger/i.test(UA),
+    weibo: /Weibo/i.test(UA),
+    qq: /QQ\/[\d.]+/i.test(UA) || /(^|\s)QQ/i.test(UA),
+    uc: /UCBrowser|UCWEB/i.test(UA),
+    quark: /Quark/i.test(UA),
+    baidu: /baidubrowser|BIDUBrowser/i.test(UA)
+  };
+  function isStandalone() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      navigator.standalone === true;
+  }
+  function closeInstallSheet() {
+    $('#installMask').classList.remove('on');
+    document.body.style.overflow = '';
+  }
+  function runInstallDiag() {
+    var rows = [];
+    rows.push(['网址协议', location.protocol === 'https:' ? 'https ✓' :
+      (location.protocol === 'file:' ? 'file（不能安装）' : location.protocol), location.protocol === 'https:']);
+    rows.push(['是否已安装', isStandalone() ? '已安装' : '未安装', true]);
+    var paint = function (extra) {
+      var all = rows.concat(extra || []);
+      $('#instDiag').innerHTML = '<span class="ttl">环境检查</span>' + all.map(function (r) {
+        return '<div><span>' + r[0] + '</span><span class="' + (r[2] ? 'ok' : 'no') + '">' +
+          esc(r[1]) + '</span></div>';
+      }).join('');
+    };
+    paint([['清单文件', '检查中…', true], ['离线缓存', '检查中…', true]]);
+
+    if (location.protocol === 'file:') {
+      paint([['清单文件', '需要 https 网址才能检查', false],
+      ['离线缓存', '需要 https 网址才能检查', false]]);
+      return;
+    }
+
+    fetch('manifest.json').then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (m) {
+      rows.push(['清单文件', '正常（' + m.name + ' · ' + (m.icons || []).length + ' 个图标）', true]);
+    }).catch(function () {
+      rows.push(['清单文件', '读取失败，可能没上传 manifest.json', false]);
+    }).then(function () {
+      paint([['离线缓存', '检查中…', true]]);
+      if (!('serviceWorker' in navigator)) {
+        rows.push(['离线缓存', '此浏览器不支持', false]);
+        paint();
+        return;
+      }
+      return navigator.serviceWorker.getRegistrations().then(function (regs) {
+        var ok = !!(regs && regs.length);
+        rows.push(['离线缓存', ok ? '已注册' : '未注册（刷新一次页面再试）', ok]);
+        paint();
+      }).catch(function () {
+        rows.push(['离线缓存', '读取失败', false]);
+        paint();
+      });
+    });
+  }
+  function openInstallSheet() {
+    var body;
+    if (isStandalone()) {
+      body = '<p>已经装好了，你现在看到的应该就是独立的应用窗口。</p>';
+    } else if (location.protocol === 'file:') {
+      body = '<p>当前是<b>直接打开本地文件</b>（地址以 file:// 开头），浏览器不允许这种页面安装。</p>' +
+        '<p>请改用 <b>https 网址</b> 打开，比如 GitHub Pages 给你的那个地址。</p>';
+    } else if (ENV.wechat || ENV.weibo || ENV.qq || ENV.uc || ENV.quark || ENV.baidu) {
+      body = '<p>你现在用的是<b>应用内浏览器</b>，它不支持安装网页应用。</p>' +
+        '<ol><li>点右上角 <kbd>…</kbd> 或 <kbd>⋯</kbd></li>' +
+        '<li>选 <b>在浏览器打开</b></li>' +
+        '<li>用 <b>Chrome</b>（安卓）或 <b>Safari</b>（iPhone）打开这个网址，再安装</li></ol>';
+    } else if (ENV.ios) {
+      body = '<p>iPhone 没有安装按钮，要在 Safari 里手动添加：</p>' +
+        '<ol><li>点底部中间的 <b>分享</b>（方框带向上箭头）</li>' +
+        '<li>列表里往下找，点 <b>添加到主屏幕</b></li>' +
+        '<li>右上角点 <b>添加</b></li></ol>' +
+        '<p>必须在 <b>Safari</b> 里操作，微信和 Chrome 里没有这一项。</p>';
+    } else if (ENV.android) {
+      body = '<p>安卓 Chrome 的安装入口在菜单里，页面上不会显示按钮：</p>' +
+        '<ol><li>点右上角 <b>⋮</b></li><li>选 <b>安装应用</b>（或 <b>添加到主屏幕</b>）</li></ol>' +
+        '<p>如果菜单里没有这一项，看下面的检查结果。</p>';
+    } else {
+      body = '<p>在地址栏右侧找 <b>安装</b> 图标，或点浏览器菜单里的 <b>安装占卜屋</b>。</p>';
+    }
+    body += '<div class="inst-diag" id="instDiag"></div>';
+    $('#instBody').innerHTML = body;
+    $('#installMask').classList.add('on');
+    document.body.style.overflow = 'hidden';
+    runInstallDiag();
+  }
+
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     installPrompt = e;
-    var b = $('#installBtn');
-    if (b) b.style.display = '';
-  });
-  $('#installBtn').addEventListener('click', function () {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    installPrompt.userChoice.then(function () {
-      installPrompt = null;
-      $('#installBtn').style.display = 'none';
-    });
   });
   window.addEventListener('appinstalled', function () {
-    var b = $('#installBtn');
-    if (b) b.style.display = 'none';
+    installPrompt = null;
+  });
+  $('#installBtn').addEventListener('click', function () {
+    if (installPrompt) {
+      installPrompt.prompt();
+      installPrompt.userChoice.then(function (r) {
+        installPrompt = null;
+        if (r && r.outcome === 'accepted') closeInstallSheet();
+        else openInstallSheet();
+      });
+      return;
+    }
+    openInstallSheet();
+  });
+  $('#instClose').addEventListener('click', closeInstallSheet);
+  $('#installMask').addEventListener('click', function (e) {
+    if (e.target === $('#installMask')) closeInstallSheet();
   });
 
   var t0 = new Date();
